@@ -41,6 +41,10 @@ function solver() {
         );
     };
 
+    const eq = (a, b) => {
+        return a.x === b.x && a.y === b.y;
+    };
+
     const add = (a, b) => {
         return {
             x: a.x + b.x,
@@ -179,27 +183,29 @@ function solver() {
     };
 
     const getItemPositions = label => {
-        const dict = {};
+        const lst = [];
         for (let y = 1; y < ROWS; y++) {
             for (let x = 1; x < COLS; x++) {
                 if (getCellRef({x, y}).innerHTML === label) {
-                    dict[hash({x: x - 1, y: y - 1})] = true;
+                    lst.push({x: x - 1, y: y - 1});
                 }
             }
         }
-        return dict;
+        return lst;
     };
 
     const getData = () => {
         const row_nums = getRowNumbers();
         const col_nums = getColNumbers();
-        const monster_pos = getItemPositions(MONSTER);
-        const chest_pos = getItemPositions(CHEST);
+        const monster_pos_lookup = makeLookup(getItemPositions(MONSTER));
+        const chest_pos = getItemPositions(CHEST)[0];
+        const chest_pos_lookup = makeLookup([chest_pos]);
         return {
             row_nums,
             col_nums,
-            monster_pos,
-            chest_pos
+            chest_pos,
+            chest_pos_lookup,
+            monster_pos_lookup
         };
     };
 
@@ -294,7 +300,7 @@ function solver() {
         return { check: false, chest_room: null };
     };
 
-    const monsterInDeadEnd = (monster_pos, wall_lookup) => {
+    const monsterInDeadEnd = (monster_pos_lookup, wall_lookup) => {
         const offsets = [
             {x: 0, y: -1},
             {x: 1, y: 0},
@@ -302,11 +308,12 @@ function solver() {
             {x: -1, y: 0}
         ];
 
-        for (let monster of monster_pos) {
+        for (let monster_hash in monster_pos_lookup) {
+            const monster_pos = monster_pos_lookup[monster_hash];
 
             let count = 0;
             for (let off of offsets) {
-                const pos = add(monster, off);
+                const pos = add(monster_pos, off);
                 if (hash(pos) in wall_lookup || !inBounds(pos)) count += 1;
             }
 
@@ -316,7 +323,7 @@ function solver() {
         return true;
     };
 
-    const deadEndHasMonster = (monster_pos, wall_lookup) => {
+    const deadEndHasMonster = (monster_pos_lookup, wall_lookup) => {
         const offsets = [
             {x: 0, y: -1},
             {x: 1, y: 0},
@@ -333,7 +340,7 @@ function solver() {
                     if (hash(pos) in wall_lookup || !inBounds(pos)) count += 1;
                 }
 
-                if (count === 3 && !(hash({x, y}) in monster_pos)) return false;
+                if (count === 3 && !(hash({x, y}) in monster_pos_lookup)) return false;
             }
         }
 
@@ -418,7 +425,7 @@ function solver() {
     const makeLookup = lst => {
         const lookup = {};
         for (let w of lst) {
-            lookup[hash(w)] = true;
+            lookup[hash(w)] = w;
         }
         return lookup;
     };
@@ -451,16 +458,7 @@ function solver() {
         const c6 = noTwoByTwoSpace(chest_room, wall_lookup);
         if (!c6) return false;
 
-        // 7: If you place a wall in the cell below a monster,
-        // fail if monster is boxed in.
-
-        // 8: For each cell placed, verify that 2x2 region previous
-        // is not an open space outside the treasure room.
-
-        // 9: Pick treasure room location first and search for a solution
-        // give a guessed location for the treasure room.
-
-        // 10: For any cell placed, ensure that it does not close off a region
+        // TODO 9: For any cell placed, ensure that it does not close off a region
         // of the map. Better than solving ahead a knowing that solution
         // can never work.
 
@@ -477,22 +475,69 @@ function solver() {
         return cpos;
     };
 
-    const nestedSol = ({ row_nums, col_nums, monster_pos, chest_pos, pos: {x: px, y: py}, walls }) => {
+    const nestedSol = ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, walls, chest_offset_lookup }) => {
+
+        debugger
 
         // Base condition
         if (allZero(row_nums) && allZero(col_nums)) {
-            if (valid(monster_pos, chest_pos, walls)) {
+            if (valid(monster_pos_lookup, chest_pos_lookup, walls)) {
                 return walls;
             }
         }
 
         // Guard condition
-        if (py >= 8) return false;
+        if (py === 8) return false;
+
+        // If not enough rows left to satisfy column count
+        if (8 - py < col_nums[px]) return false;
+
+        // If not enough cols left to satisfy row count
+        if (8 - px < row_nums[py]) return false;
+
+        // Verify that 2x2 region previous
+        // is not an open space outside the treasure room.
+        if (py >= 1 && px >= 2) {
+            const prev_cells = [
+                {x: px - 1, y: py},
+                {x: px - 2, y: py},
+                {x: px - 1, y: py - 1},
+                {x: px - 2, y: py - 1}
+            ];
+
+            const spaceFound = () => {
+                for (let pos of prev_cells) {
+                    const hh = hash(pos);
+                    if (hh in chest_offset_lookup) return false;
+                    if (walls.filter(coord => eq(coord, pos)).length > 0) return false;
+                }
+                return true;
+            };
+            if (spaceFound()) return false;
+        }
+
+        // If you place a wall in the cell below a monster,
+        // fail if monster is boxed in or has two exits.
+        if (py >= 1 && px >= 1) {
+            const prev_pos = {x: px - 1, y: py};
+            if (walls.filter(coord => eq(coord, prev_pos)).length > 0) {
+                const ch = hash({x: px - 1, y: py - 1});
+                if (ch in monster_pos_lookup) {
+                    const special_monster_pos_lookup = {[ch]: true};
+                    if (!monsterInDeadEnd(special_monster_pos_lookup, makeLookup(walls))) return false;
+                }
+            }
+        }
 
         const hh = hash({x: px, y: py});
 
         // Place a wall if possible and recurse
-        if (row_nums[py] > 0 && col_nums[px] > 0 && !(hh in monster_pos) && !(hh in chest_pos)) {
+        if (
+            row_nums[py] > 0 &&
+            col_nums[px] > 0 &&
+            !(hh in monster_pos_lookup) &&
+            !(hh in chest_offset_lookup)
+        ) {
 
             walls.push({x: px, y: py});
             row_nums[py] -= 1;
@@ -500,13 +545,17 @@ function solver() {
 
             getCellRef({x: px + 1, y: py + 1}).innerHTML = "W";
 
+            // TODO: If you're placing a wall under the bottom right corner of the
+            // chest_offset_lookup, you can eval the chest room at this point
+
             const answer = nestedSol({
                 row_nums,
                 col_nums,
-                monster_pos,
-                chest_pos,
+                monster_pos_lookup,
+                chest_pos_lookup,
                 pos: nextPos({x: px, y: py}),
-                walls
+                walls,
+                chest_offset_lookup
             });
 
             if (answer !== false) {
@@ -521,14 +570,15 @@ function solver() {
 
         }
 
-        // Unable to place wall in current cell
+        // Try not placing a wall in the current cell
         const answer = nestedSol({
             row_nums,
             col_nums,
-            monster_pos,
-            chest_pos,
+            monster_pos_lookup,
+            chest_pos_lookup,
             pos: nextPos({x: px, y: py}),
-            walls
+            walls,
+            chest_offset_lookup
         });
 
         return answer;
@@ -538,21 +588,44 @@ function solver() {
         const {
             row_nums,
             col_nums,
-            monster_pos,
-            chest_pos
+            chest_pos,
+            chest_pos_lookup,
+            monster_pos_lookup
         } = getData();
 
-        const answer = nestedSol({
-            row_nums,
-            col_nums,
-            monster_pos,
-            chest_pos,
-            pos: {x: 0, y: 0},
-            walls: [] // track wall positions
-        });
+        const offsets = [
+            {x: -1, y: -1},
+            {x: 0, y: -1},
+            {x: 1, y: -1},
 
-        console.log(answer);
+            {x: -1, y: 0},
+            {x: 0, y: 0},
+            {x: 1, y: 0},
 
+            {x: -1, y: 1},
+            {x: 0, y: 1},
+            {x: 1, y: 1}
+        ];
+        const chest_offsets = offsets.map(off => add(chest_pos, off));
+        for (let shift of offsets) {
+            const current_offsets = chest_offsets.map(off => add(shift, off));
+
+            const answer = nestedSol({
+                row_nums,
+                col_nums,
+                monster_pos_lookup,
+                chest_pos_lookup,
+                pos: {x: 0, y: 0},
+                walls: [], // track wall positions
+                chest_offset_lookup: makeLookup(current_offsets)
+            });
+
+            if (answer !== false) {
+                console.log(answer);
+                return;
+            }
+        }
+        console.log(false); // No answer possible
     };
 
     const init = () => {
