@@ -1,5 +1,5 @@
 function solver() {
-    
+
     // Constants
     const ROWS = 9;
     const COLS = 9;
@@ -8,16 +8,44 @@ function solver() {
     const CHEST = "C";
     const MONSTER = "M";
 
-    // Container dimensions
-    // const {left: containerLeft, top: containerTop} = document.querySelector(".container").getBoundingClientRect();
-    
     // Element refs
     const grid_ref = document.querySelectorAll(".cell");
     const circle_ref = document.querySelector(".circle");
     const solveBtn_ref = document.querySelector(".solveBtn");
-    
+
+    grid_ref.forEach((e, i) => e.dataset.index = i);
+
     const getCellRef = ({x, y}) => {
         return grid_ref[COLS * y + x];
+    };
+
+    const coordFromIndex = index => {
+        return {
+            x: index % COLS,
+            y: Math.floor(index / COLS)
+        };
+    };
+
+    const hash = ({x, y}) => {
+        return JSON.stringify({x, y});
+    };
+
+    const saveData = (pos, value) => {
+        const dataStr = window.localStorage.getItem("data");
+        let data = {};
+        if (dataStr !== null) data = JSON.parse(dataStr);
+        data[hash({x: pos.x, y: pos.y})] = { pos, value };
+        window.localStorage.setItem(
+            "data",
+            JSON.stringify(data)
+        );
+    };
+
+    const add = (a, b) => {
+        return {
+            x: a.x + b.x,
+            y: a.y + b.y
+        };
     };
 
     const sub = (a, b) => {
@@ -60,7 +88,7 @@ function solver() {
             const cell_ref = getCellRef({x, y});
             cell_ref.innerHTML = 0;
             cell_ref.addEventListener("mousedown", e => {
-                const { target, clientX, clientY } = e; 
+                const { target, clientX, clientY } = e;
                 const startPos = {x: clientX, y: clientY};
                 selection = {
                     startPos,
@@ -93,7 +121,10 @@ function solver() {
 
         document.body.addEventListener("mouseup", e => {
             if (selection !== null) {
-             
+
+                const pos = coordFromIndex(selection.target.dataset.index);
+                saveData(pos, selection.target.innerHTML);
+
                 selection = null;
                 showCircle(false);
                 setCursorPointer(false);
@@ -103,17 +134,18 @@ function solver() {
     };
     numberListeners();
 
-    const placeListeners = () => {    
+    const placeListeners = () => {
         const cycle_lookup = {
             [EMPTY]: MONSTER,
             [MONSTER]: CHEST,
             [CHEST]: EMPTY
         };
-        
+
         const registerCell = ({x, y}) => {
             getCellRef({x, y}).addEventListener("click", e => {
                 const { target: t } = e;
                 t.innerHTML = cycle_lookup[t.innerHTML];
+                saveData({x, y}, t.innerHTML);
             });
         };
 
@@ -125,7 +157,7 @@ function solver() {
 
     };
     placeListeners();
-    
+
     const getRowNumbers = () => {
         const lst = [];
         for (let i = 1; i < ROWS; i++) {
@@ -144,10 +176,6 @@ function solver() {
             );
         }
         return lst;
-    };
-
-    const hash = ({x, y}) => {
-        return JSON.stringify({x, y});
     };
 
     const getItemPositions = label => {
@@ -279,7 +307,7 @@ function solver() {
             let count = 0;
             for (let off of offsets) {
                 const pos = add(monster, off);
-                if (hash(pos) in wall_lookup || !inBounds(pos)) count += 1; 
+                if (hash(pos) in wall_lookup || !inBounds(pos)) count += 1;
             }
 
             if (count !== 3) return false;
@@ -304,7 +332,7 @@ function solver() {
                     const pos = add({x, y}, off);
                     if (hash(pos) in wall_lookup || !inBounds(pos)) count += 1;
                 }
-    
+
                 if (count === 3 && !(hash({x, y}) in monster_pos)) return false;
             }
         }
@@ -313,7 +341,7 @@ function solver() {
     };
 
     const dfs = (start, wall_lookup) => {
-        
+
         const offsets = [
             {x: 0, y: -1},
             {x: 1, y: 0},
@@ -332,13 +360,13 @@ function solver() {
             seen[hh] = true;
 
             for (let off of offsets) {
-                
+
                 const nx = add(off, pos);
                 const hash_nx = hash(nx);
 
                 if (!inBounds(nx) || hash_nx in wall_lookup) continue;
                 if (hash_nx in seen) continue;
-                
+
                 stack.push(nx);
 
             }
@@ -349,10 +377,10 @@ function solver() {
 
     const emptySpaceContigious = (chest_pos, wall_lookup) => {
         const empty_count = 8 * 8 - Object.keys(wall_lookup).length;
-        
+
         // chest_pos is always not a wall, so start DFS there
         const fill_count = dfs(chest_pos, wall_lookup);
-    
+
         return empty_count === fill_count;
     };
 
@@ -370,13 +398,13 @@ function solver() {
         ];
         for (let y = 0; y < 8 - 1; y++) {
             for (let x = 0; x < 8 - 1; x++) {
-                
+
                 let count = 0;
                 for (let off of offsets) {
-                    
+
                     const pos = add({x, y}, off);
                     const hh = hash(pos);
-                    
+
                     if (hh in chest_room_lookup) break;
                     if (!(hh in wall_lookup)) count += 1;
 
@@ -446,16 +474,18 @@ function solver() {
         }
 
         // Guard condition
-        if (pos.y >= 8) return false;
+        if (py >= 8) return false;
 
         const hh = hash({x: px, y: py});
 
         // Place a wall if possible and recurse
         if (row_nums[py] > 0 && col_nums[px] > 0 && !(hh in monster_pos) && !(hh in chest_pos)) {
-            
+
             walls.push({x: px, y: py});
             row_nums[py] -= 1;
             col_nums[px] -= 1;
+
+            console.log(`Wall at (${py}, ${px})`);
 
             const answer = nestedSol({
                 row_nums,
@@ -473,10 +503,11 @@ function solver() {
             walls.pop();
             row_nums[py] += 1;
             col_nums[px] += 1;
-        
+
         }
 
         // Unable to place wall in current cell
+        console.log(`Empty at (${py}, ${px})`);
         const answer = nestedSol({
             row_nums,
             col_nums,
@@ -509,8 +540,20 @@ function solver() {
         console.log(answer);
 
     };
+
+    const init = () => {
+        // Load localStorage
+        const dataStr = window.localStorage.getItem("data");
+        if (dataStr !== null) {
+            const data = JSON.parse(dataStr);
+            for (let key in data) {
+                const { pos, value } = data[key];
+                getCellRef({x: pos.x, y: pos.y}).innerHTML = value;
+            }
+        }
+    };
+    init();
+
     solveBtn_ref.addEventListener("click", sol);
-
-
 }
 solver();
