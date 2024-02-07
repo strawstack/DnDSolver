@@ -1,0 +1,77 @@
+html, body {
+    margin: 0px;
+    padding: 0px;
+    height: 100%;
+}
+
+body {
+    display: flex;
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.solveBtn {
+    height: 40px;
+    width: 80px;
+    border: 2px solid #555;
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5rem;
+    transition: background 0.2s;
+}
+
+    .solveBtn:hover {
+        cursor: pointer;
+        background: lightgray;
+    }
+
+.container {
+    user-select: none;
+    height: 720px;
+    width: 720px;
+    display: grid;
+    grid-template-rows: repeat(9, 1fr);
+    border-top: 2px solid #555;
+    border-left: 2px solid #555;
+}
+
+    .circle {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        border: 2px dashed #999;
+        background: transparent;
+        height: 0px;
+        width: 0px;
+        display: none;
+        border-radius: 50%;
+    }
+
+    .row {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+    }
+
+        .cell {
+            border-right: 2px solid #555;
+            border-bottom: 2px solid #555;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3rem;
+        }
+
+            .cell:hover {
+                cursor: pointer;
+                background: lightgrey;
+            }
+
+            .cell.ignore:hover {
+                cursor: default;
+                background: white;
+            }
