@@ -451,6 +451,19 @@ function solver() {
         const c6 = noTwoByTwoSpace(chest_room, wall_lookup);
         if (!c6) return false;
 
+        // 7: If you place a wall in the cell below a monster,
+        // fail if monster is boxed in.
+
+        // 8: For each cell placed, verify that 2x2 region previous
+        // is not an open space outside the treasure room.
+
+        // 9: Pick treasure room location first and search for a solution
+        // give a guessed location for the treasure room.
+
+        // 10: For any cell placed, ensure that it does not close off a region
+        // of the map. Better than solving ahead a knowing that solution
+        // can never work.
+
         return true;
     };
 
@@ -485,7 +498,7 @@ function solver() {
             row_nums[py] -= 1;
             col_nums[px] -= 1;
 
-            console.log(`Wall at (${py}, ${px})`);
+            getCellRef({x: px + 1, y: py + 1}).innerHTML = "W";
 
             const answer = nestedSol({
                 row_nums,
@@ -504,10 +517,11 @@ function solver() {
             row_nums[py] += 1;
             col_nums[px] += 1;
 
+            getCellRef({x: px + 1, y: py + 1}).innerHTML = "";
+
         }
 
         // Unable to place wall in current cell
-        console.log(`Empty at (${py}, ${px})`);
         const answer = nestedSol({
             row_nums,
             col_nums,
