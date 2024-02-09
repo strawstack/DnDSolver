@@ -223,84 +223,57 @@ function solver() {
         return x >= 0 && x < 8 && y >= 0 && y < 8;
     };
 
-    const checkRoom = (current_offsets, wall_lookup) => {
-        for (let off of current_offsets) {
-            if (!inBounds(off) || hash(off) in wall_lookup) return false;
-        }
-        return true;
-    };
+    const chestInRoomWithDoor = (chest_offset_lookup, wall_lookup) => {
 
-    const hasWallsAndDoor = (current_outer, wall_lookup) => {
-        let hasDoor = false;
-        for (let off of current_outer) {
-            if (!(hash(off) in wall_lookup) && inBounds(off)) {
-                if (hasDoor) {
-                    return false;
-
-                } else {
-                    hasDoor = true;
-
+        const hasWallsAndDoor = (current_outer, wall_lookup) => {
+            let hasDoor = false;
+            for (let off of current_outer) {
+                if (!(hash(off) in wall_lookup) && inBounds(off)) {
+                    if (hasDoor) {
+                        return false;
+    
+                    } else {
+                        hasDoor = true;
+    
+                    }
                 }
             }
-        }
-        return hasDoor;
-    };
+            return hasDoor;
+        };
 
-    const chestInRoomWithSize = (chest_pos, wall_lookup) => {
-        const offsets = [
-            {x: -1, y: -1},
+        const topRight = Object.values(chest_offset_lookup).reduce((a, c) => {
+            if (a.x === c.x) {
+                if (a.y < c.y) return a;
+                return c;
+
+            } else {
+                if (a.x < c.x) return a;
+                return c;
+            }
+        });
+
+        // Offsets given topRight cell
+        const outer = [
             {x: 0, y: -1},
             {x: 1, y: -1},
-
-            {x: -1, y: 0},
-            {x: 0, y: 0},
-            {x: 1, y: 0},
-
-            {x: -1, y: 1},
-            {x: 0, y: 1},
-            {x: 1, y: 1}
-        ];
-
-        const chest_offsets = offsets.map(off => add(chest_pos, off));
-
-        const outer = [
-            {x: -1, y: -2},
-            {x: 0, y: -2},
-            {x: 1, y: -2},
-
-            {x: -2, y: -1},
             {x: 2, y: -1},
 
-            {x: -2, y: 0},
-            {x: 2, y: 0},
+            {x: 3, y: 0},
+            {x: 3, y: 1},
+            {x: 3, y: 2},
 
-            {x: -2, y: 1},
-            {x: 2, y: 1},
+            {x: 0, y: 3},
+            {x: 1, y: 3},
+            {x: 2, y: 3},
 
-            {x: -1, y: 2},
-            {x: 0, y: 2},
-            {x: 1, y: 2}
-        ].map(off => add(chest_pos, off));
+            {x: -1, y: 0},
+            {x: -1, y: 1},
+            {x: -1, y: 2}
+        ];
+        const current_outer = outer.map(x => add(x, topRight));
 
-        // Shift the room around the chest location until a match is found
-        for (let shift of offsets) {
-            const current_offsets = chest_offsets.map(off => add(shift, off));
-            const current_outer = outer.map(out => add(shift, out));
-
-            const emptyRoom = checkRoom(current_offsets, wall_lookup);
-            if (!emptyRoom) continue;
-
-            const wallsAndDoor = hasWallsAndDoor(current_outer, wall_lookup);
-            if (wallsAndDoor) {
-                return {
-                    check: true,
-                    chest_room: current_offsets
-                };
-            };
-
-        }
-
-        return { check: false, chest_room: null };
+        const wallsAndDoor = hasWallsAndDoor(current_outer, wall_lookup);
+        return wallsAndDoor;
     };
 
     const monsterInDeadEnd = (monster_pos_lookup, wall_lookup) => {
@@ -336,6 +309,8 @@ function solver() {
 
         for (let y = 0; y < 8; y++) {
             for (let x = 0; x < 8; x++) {
+
+                if (hash({x, y}) in wall_lookup) continue;
 
                 let count = 0;
                 for (let off of offsets) {
@@ -385,21 +360,16 @@ function solver() {
         return Object.keys(seen).length;
     };
 
-    const emptySpaceContigious = (chest_pos, wall_lookup) => {
+    const emptySpaceContigious = (chest_pos_lookup, wall_lookup) => {
         const empty_count = 8 * 8 - Object.keys(wall_lookup).length;
 
         // chest_pos is always not a wall, so start DFS there
-        const fill_count = dfs(chest_pos, wall_lookup);
+        const fill_count = dfs(Object.values(chest_pos_lookup)[0], wall_lookup);
 
         return empty_count === fill_count;
     };
 
-    const hallwayOneSpaceWide = wall_lookup => {
-        return true;
-    };
-
-    const noTwoByTwoSpace = (chest_room, wall_lookup) => {
-        const chest_room_lookup = makeLookup(chest_room);
+    const noTwoByTwoSpace = (chest_offset_lookup, wall_lookup) => {
         const offsets = [
             {x: 0, y: 0},
             {x: 1, y: 0},
@@ -415,7 +385,7 @@ function solver() {
                     const pos = add({x, y}, off);
                     const hh = hash(pos);
 
-                    if (hh in chest_room_lookup) break;
+                    if (hh in chest_offset_lookup) break;
                     if (!(hh in wall_lookup)) count += 1;
 
                 }
@@ -433,30 +403,26 @@ function solver() {
         return lookup;
     };
 
-    const valid = (monster_pos, chest_pos, wall_lookup) => {
+    const valid = (monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup) => {
 
         // 1: Chest in 3x3 room with one door.
-        const { check: c1, chest_room } = chestInRoomWithSize(chest_pos, wall_lookup);
+        const c1 = chestInRoomWithDoor(chest_offset_lookup, wall_lookup);
         if (!c1) return false;
 
         // 2: Every monster in dead end.
-        const c2 = monsterInDeadEnd(monster_pos, wall_lookup);
+        const c2 = monsterInDeadEnd(monster_pos_lookup, wall_lookup);
         if (!c2) return false;
 
         // 3: Every dead end contains monster.
-        const c3 = deadEndHasMonster(monster_pos, wall_lookup);
+        const c3 = deadEndHasMonster(monster_pos_lookup, wall_lookup);
         if (!c3) return false;
 
         // 4: All empty space is contigious.
-        const c4 = emptySpaceContigious(chest_pos, wall_lookup);
+        const c4 = emptySpaceContigious(chest_pos_lookup, wall_lookup);
         if (!c4) return false;
 
-        // 5: Hallways one space wide.
-        const c5 = hallwayOneSpaceWide(wall_lookup);
-        if (!c5) return false;
-
-        // 6: Outside treasure room, never 2x2 space.
-        const c6 = noTwoByTwoSpace(chest_room, wall_lookup);
+        // 5: Outside treasure room, never 2x2 space.
+        const c6 = noTwoByTwoSpace(chest_offset_lookup, wall_lookup);
         if (!c6) return false;
 
         // TODO 9: For any cell placed, ensure that it does not close off a region
@@ -490,11 +456,54 @@ function solver() {
     let prevBackground = null;
 
     const nestedSol = ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup }) => {
-        
+
+        if (DOM) {
+            if (
+                hash({x: 5, y: 0}) in wall_lookup &&
+                hash({x: 6, y: 0}) in wall_lookup &&
+                hash({x: 7, y: 0}) in wall_lookup &&
+
+                hash({x: 1, y: 1}) in wall_lookup &&
+                hash({x: 3, y: 1}) in wall_lookup &&
+
+                hash({x: 1, y: 2}) in wall_lookup &&
+                hash({x: 3, y: 2}) in wall_lookup &&
+
+                hash({x: 5, y: 2}) in wall_lookup &&
+                hash({x: 6, y: 2}) in wall_lookup &&
+                hash({x: 7, y: 2}) in wall_lookup &&
+
+                hash({x: 1, y: 3}) in wall_lookup &&
+                hash({x: 2, y: 3}) in wall_lookup &&
+                hash({x: 3, y: 3}) in wall_lookup &&
+
+                hash({x: 3, y: 4}) in wall_lookup &&
+
+                hash({x: 5, y: 4}) in wall_lookup &&
+                hash({x: 6, y: 4}) in wall_lookup &&
+                hash({x: 7, y: 4}) in wall_lookup &&
+
+                hash({x: 3, y: 5}) in wall_lookup &&
+
+                hash({x: 3, y: 6}) in wall_lookup &&
+
+                hash({x: 5, y: 6}) in wall_lookup &&
+                hash({x: 6, y: 6}) in wall_lookup &&
+                hash({x: 7, y: 6}) in wall_lookup &&
+
+                hash({x: 0, y: 7}) in wall_lookup &&
+                hash({x: 1, y: 7}) in wall_lookup &&
+                hash({x: 2, y: 7}) in wall_lookup &&
+                hash({x: 3, y: 7}) in wall_lookup &&
+
+                true
+            ) debugger;
+        }
+
         // Base condition
         if (allZero(row_nums) && allZero(col_nums)) {
             if (LOG) console.log(`allZero(row_nums) && allZero(col_nums)`);
-            const v = valid(monster_pos_lookup, chest_pos_lookup, wall_lookup);
+            const v = valid(monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup);
             if (LOG && !v) console.log(`valid(monster_pos_lookup, chest_pos_lookup, wall_lookup)`);
             if (v) {
                 return wall_lookup;
