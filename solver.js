@@ -8,8 +8,9 @@ function solver() {
     const CHEST = "C";
     const MONSTER = "M";
 
-    const DOM = true;
-    const LOG = false;
+    const DOM = false; // Write to DOM while debugging 
+    const LOG = false; // Show console log statements
+    const ANIMATED = false; // Write to DOM with async calls to allow render
 
     // Element refs
     const grid_ref = document.querySelectorAll(".cell");
@@ -17,6 +18,12 @@ function solver() {
     const solveBtn_ref = document.querySelector(".solveBtn");
 
     grid_ref.forEach((e, i) => e.dataset.index = i);
+
+    const delay = () => {
+        return new Promise((res, rej) => {
+            setTimeout(res, 0);
+        });
+    };
 
     const getCellRef = ({x, y}) => {
         return grid_ref[COLS * y + x];
@@ -455,49 +462,12 @@ function solver() {
     let prevFocus = null;
     let prevBackground = null;
 
-    const nestedSol = ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup }) => {
+    const nestedSol = async ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup }) => {
 
-        if (DOM) {
-            if (
-                hash({x: 5, y: 0}) in wall_lookup &&
-                hash({x: 6, y: 0}) in wall_lookup &&
-                hash({x: 7, y: 0}) in wall_lookup &&
-
-                hash({x: 1, y: 1}) in wall_lookup &&
-                hash({x: 3, y: 1}) in wall_lookup &&
-
-                hash({x: 1, y: 2}) in wall_lookup &&
-                hash({x: 3, y: 2}) in wall_lookup &&
-
-                hash({x: 5, y: 2}) in wall_lookup &&
-                hash({x: 6, y: 2}) in wall_lookup &&
-                hash({x: 7, y: 2}) in wall_lookup &&
-
-                hash({x: 1, y: 3}) in wall_lookup &&
-                hash({x: 2, y: 3}) in wall_lookup &&
-                hash({x: 3, y: 3}) in wall_lookup &&
-
-                hash({x: 3, y: 4}) in wall_lookup &&
-
-                hash({x: 5, y: 4}) in wall_lookup &&
-                hash({x: 6, y: 4}) in wall_lookup &&
-                hash({x: 7, y: 4}) in wall_lookup &&
-
-                hash({x: 3, y: 5}) in wall_lookup &&
-
-                hash({x: 3, y: 6}) in wall_lookup &&
-
-                hash({x: 5, y: 6}) in wall_lookup &&
-                hash({x: 6, y: 6}) in wall_lookup &&
-                hash({x: 7, y: 6}) in wall_lookup &&
-
-                hash({x: 0, y: 7}) in wall_lookup &&
-                hash({x: 1, y: 7}) in wall_lookup &&
-                hash({x: 2, y: 7}) in wall_lookup &&
-                hash({x: 3, y: 7}) in wall_lookup &&
-
-                true
-            ) debugger;
+        if ((ANIMATED || DOM) && py < 8) {
+            if (prevFocus !== null) getCellRef(prevFocus).style.background = prevBackground;
+            prevFocus = {x: px + 1, y: py + 1};
+            await delay();
         }
 
         // Base condition
@@ -506,6 +476,9 @@ function solver() {
             const v = valid(monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup);
             if (LOG && !v) console.log(`valid(monster_pos_lookup, chest_pos_lookup, wall_lookup)`);
             if (v) {
+                Object.values(wall_lookup).forEach(pos => {
+                    getCellRef({x: pos.x + 1, y: pos.y + 1}).innerHTML = "W";
+                });
                 return wall_lookup;
             }
         }
@@ -516,12 +489,11 @@ function solver() {
             return false
         };
 
-        if (DOM) {
-            if (prevFocus !== null) getCellRef(prevFocus).style.background = prevBackground;
-            prevFocus = {x: px + 1, y: py + 1};
+        if (ANIMATED || DOM) {
             const cellRef = getCellRef({x: px + 1, y: py + 1});
             prevBackground = cellRef.style.background;
             cellRef.style.background = "lightblue";
+            await delay();
         };
 
         // If not enough rows left to satisfy column count
@@ -593,12 +565,15 @@ function solver() {
             row_nums[py] -= 1;
             col_nums[px] -= 1;
 
-            if (DOM) getCellRef({x: px + 1, y: py + 1}).innerHTML = "W";
+            if (ANIMATED || DOM) {
+                getCellRef({x: px + 1, y: py + 1}).innerHTML = "W";
+                await delay();
+            };
 
             // TODO: If you're placing a wall under the bottom right corner of the
             // chest_offset_lookup, you can eval the chest room at this point
 
-            const answer = nestedSol({
+            const answer = await nestedSol({
                 row_nums,
                 col_nums,
                 monster_pos_lookup,
@@ -617,12 +592,15 @@ function solver() {
             row_nums[py] += 1;
             col_nums[px] += 1;
 
-            if (DOM) getCellRef({x: px + 1, y: py + 1}).innerHTML = "";
+            if (ANIMATED || DOM) {
+                getCellRef({x: px + 1, y: py + 1}).innerHTML = "";
+                await delay();
+            };
 
         }
 
         // Try not placing a wall in the current cell
-        const answer = nestedSol({
+        const answer = await nestedSol({
             row_nums,
             col_nums,
             monster_pos_lookup,
@@ -637,7 +615,7 @@ function solver() {
 
     let prevOffsets = null;
 
-    const sol = () => {
+    const sol = async () => {
         const {
             row_nums,
             col_nums,
@@ -666,7 +644,7 @@ function solver() {
             // All chest cells must be in bounds
             if (!current_offsets.every(pos => inBounds(pos))) continue;
 
-            if (DOM) {
+            if (ANIMATED || DOM) {
                 if (prevOffsets !== null) {
                     for (let off of prevOffsets) {
                         getCellRef(add(off, {x: 1, y: 1})).style.background = 'white';
@@ -678,7 +656,7 @@ function solver() {
                 prevOffsets = [...current_offsets];
             }
 
-            const answer = nestedSol({
+            const answer = await nestedSol({
                 row_nums,
                 col_nums,
                 monster_pos_lookup,
