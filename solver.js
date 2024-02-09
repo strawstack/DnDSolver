@@ -208,12 +208,12 @@ function solver() {
         const row_nums = getRowNumbers();
         const col_nums = getColNumbers();
         const monster_pos_lookup = makeLookup(getItemPositions(MONSTER));
-        const chest_pos = getItemPositions(CHEST)[0];
-        const chest_pos_lookup = makeLookup([chest_pos]);
+        const chest_pos = getItemPositions(CHEST);
+        const chest_pos_lookup = (chest_pos.length > 0) ? makeLookup(chest_pos) : null;
         return {
             row_nums,
             col_nums,
-            chest_pos,
+            chest_pos: (chest_pos.length > 0) ? chest_pos : null,
             chest_pos_lookup,
             monster_pos_lookup
         };
@@ -231,6 +231,8 @@ function solver() {
     };
 
     const chestInRoomWithDoor = (chest_offset_lookup, wall_lookup) => {
+
+        if (chest_offset_lookup === null) return true;
 
         const hasWallsAndDoor = (current_outer, wall_lookup) => {
             let hasDoor = false;
@@ -371,8 +373,22 @@ function solver() {
         const empty_count = 8 * 8 - Object.keys(wall_lookup).length;
 
         // chest_pos is always not a wall, so start DFS there
-        const fill_count = dfs(Object.values(chest_pos_lookup)[0], wall_lookup);
-
+        let fill_count = null;
+        if (chest_pos_lookup === null) {
+            for (let y = 0; y < 8; y++) {
+                for (let x = 0; x < 8; x++) {
+                    const hh = hash({x, y});
+                    if (!(hh in wall_lookup)) {
+                        fill_count = dfs({x, y}, wall_lookup);
+                        break;
+                    }
+                }
+            }
+            
+        } else {
+            fill_count = dfs(Object.values(chest_pos_lookup)[0], wall_lookup);
+        }
+        
         return empty_count === fill_count;
     };
 
@@ -392,7 +408,7 @@ function solver() {
                     const pos = add({x, y}, off);
                     const hh = hash(pos);
 
-                    if (hh in chest_offset_lookup) break;
+                    if (!(chest_offset_lookup === null) && hh in chest_offset_lookup) break;
                     if (!(hh in wall_lookup)) count += 1;
 
                 }
@@ -410,10 +426,15 @@ function solver() {
         return lookup;
     };
 
-    const valid = (monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup) => {
+    const valid = (monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup, chest_offset_lookup_multi) => {
 
         // 1: Chest in 3x3 room with one door.
-        const c1 = chestInRoomWithDoor(chest_offset_lookup, wall_lookup);
+        let c1 = null;
+        if (chest_offset_lookup_multi !== null) {
+            c1 = chest_offset_lookup_multi.every(chest_offset_lookup => chestInRoomWithDoor(chest_offset_lookup, wall_lookup));
+        } else {
+            c1 = chestInRoomWithDoor(chest_offset_lookup, wall_lookup);
+        }
         if (!c1) return false;
 
         // 2: Every monster in dead end.
@@ -462,7 +483,10 @@ function solver() {
     let prevFocus = null;
     let prevBackground = null;
 
-    const nestedSol = async ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup }) => {
+    const nestedSol = async ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup, chest_offset_lookup_multi }) => {
+
+        // Not enough walls in prev row
+        if (py > 0 && row_nums[py - 1] !== 0) return false;
 
         if ((ANIMATED || DOM) && py < 8) {
             if (prevFocus !== null) getCellRef(prevFocus).style.background = prevBackground;
@@ -473,7 +497,7 @@ function solver() {
         // Base condition
         if (allZero(row_nums) && allZero(col_nums)) {
             if (LOG) console.log(`allZero(row_nums) && allZero(col_nums)`);
-            const v = valid(monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup);
+            const v = valid(monster_pos_lookup, chest_pos_lookup, chest_offset_lookup, wall_lookup, chest_offset_lookup_multi);
             if (LOG && !v) console.log(`valid(monster_pos_lookup, chest_pos_lookup, wall_lookup)`);
             if (v) {
                 Object.values(wall_lookup).forEach(pos => {
@@ -521,7 +545,7 @@ function solver() {
             const spaceFound = () => {
                 for (let pos of prev_cells) {
                     const hh = hash(pos);
-                    if (hh in chest_offset_lookup) return false;
+                    if (chest_offset_lookup !== null && hh in chest_offset_lookup) return false;
                     if (hh in wall_lookup) return false;
                 }
                 return true;
@@ -552,7 +576,7 @@ function solver() {
         const c1 = row_nums[py] > 0;
         const c2 = col_nums[px] > 0;
         const c3 = !(hh in monster_pos_lookup);
-        const c4 = !(hh in chest_offset_lookup);
+        const c4 = (chest_offset_lookup === null) ? true : !(hh in chest_offset_lookup);
         if (LOG) {
             if (!c1) console.log(`row_nums[py] > 0`);
             if (!c2) console.log(`col_nums[px] > 0`);
@@ -580,7 +604,8 @@ function solver() {
                 chest_pos_lookup,
                 pos: nextPos({x: px, y: py}),
                 wall_lookup,
-                chest_offset_lookup
+                chest_offset_lookup,
+                chest_offset_lookup_multi
             });
 
             if (answer !== false) {
@@ -607,10 +632,42 @@ function solver() {
             chest_pos_lookup,
             pos: nextPos({x: px, y: py}),
             wall_lookup,
-            chest_offset_lookup
+            chest_offset_lookup,
+            chest_offset_lookup_multi
         });
 
         return answer;
+    };
+
+    const makeCounters = size => {
+        const ROLL = 9;
+
+        // Advance counter by one (pass by value)
+        const next = counter => {
+            const new_counter = [...counter];
+            for (let i = 0; i < size; i++) {
+                new_counter[i] += 1;
+                if (new_counter[i] < ROLL) break;
+                new_counter[i] = 0;
+            }
+            return new_counter;
+        };
+        
+        // Init counter
+        let counter = [];
+        for (let i = 0; i < size; i++) counter.push(0);
+        counter = next(counter);
+
+        const counters = [];
+        counters.push(counter);
+
+        // Generate list of counters
+        while (!counter.every(x => x === 0)) {
+            counter = next(counter);
+            counters.push(counter);
+        }
+                
+        return counters;
     };
 
     let prevOffsets = null;
@@ -637,25 +694,80 @@ function solver() {
             {x: 0, y: 1},
             {x: 1, y: 1}
         ];
-        const chest_offsets = offsets.map(off => add(chest_pos, off));
-        for (let shift of offsets) {
-            const current_offsets = chest_offsets.map(off => add(shift, off));
 
-            // All chest cells must be in bounds
-            if (!current_offsets.every(pos => inBounds(pos))) continue;
-
-            if (ANIMATED || DOM) {
-                if (prevOffsets !== null) {
-                    for (let off of prevOffsets) {
-                        getCellRef(add(off, {x: 1, y: 1})).style.background = 'white';
+        if (chest_pos !== null && chest_pos.length === 1) {
+            const chest_offsets = offsets.map(off => add(chest_pos, off));
+            for (let shift of offsets) {
+                const current_offsets = chest_offsets.map(off => add(shift, off));
+    
+                // All chest cells must be in bounds
+                if (!current_offsets.every(pos => inBounds(pos))) continue;
+    
+                if (ANIMATED || DOM) {
+                    if (prevOffsets !== null) {
+                        for (let off of prevOffsets) {
+                            getCellRef(add(off, {x: 1, y: 1})).style.background = 'white';
+                        }
                     }
+                    for (let off of current_offsets) {
+                        getCellRef(add(off, {x: 1, y: 1})).style.background = 'lightgoldenrodyellow';
+                    }
+                    prevOffsets = [...current_offsets];
                 }
-                for (let off of current_offsets) {
-                    getCellRef(add(off, {x: 1, y: 1})).style.background = 'lightgoldenrodyellow';
+    
+                const answer = await nestedSol({
+                    row_nums,
+                    col_nums,
+                    monster_pos_lookup,
+                    chest_pos_lookup,
+                    pos: {x: 0, y: 0},
+                    wall_lookup: {}, // track wall positions
+                    chest_offset_lookup: makeLookup(current_offsets),
+                    chest_offset_lookup_multi: null
+                });
+    
+                if (answer !== false) {
+                    console.log(answer);
+                    return;
                 }
-                prevOffsets = [...current_offsets];
             }
 
+        } else if (chest_pos !== null && chest_pos.length > 1) {
+            
+            let chest_offsets = [];
+            for (let cp of chest_pos) {
+                chest_offsets.push(
+                    offsets.map(off => add(cp, off))
+                );
+            }
+            
+            const counters = makeCounters(chest_pos.length);
+            for (let counter of counters) {
+                const current_offsets = chest_offsets.map((chest_offset, i) => {
+                    return chest_offset.map(off => add(offsets[counter[i]], off));
+                });
+                
+                // All chest cells must be in bounds
+                if (!current_offsets.every(current_offset => current_offset.every(pos => inBounds(pos)))) continue;
+        
+                const answer = await nestedSol({
+                    row_nums,
+                    col_nums,
+                    monster_pos_lookup,
+                    chest_pos_lookup,
+                    pos: {x: 0, y: 0},
+                    wall_lookup: {}, // track wall positions
+                    chest_offset_lookup: makeLookup(current_offsets.flat()),
+                    chest_offset_lookup_multi: current_offsets
+                });
+    
+                if (answer !== false) {
+                    console.log(answer);
+                    return;
+                }
+            }
+
+        } else {
             const answer = await nestedSol({
                 row_nums,
                 col_nums,
@@ -663,7 +775,8 @@ function solver() {
                 chest_pos_lookup,
                 pos: {x: 0, y: 0},
                 wall_lookup: {}, // track wall positions
-                chest_offset_lookup: makeLookup(current_offsets)
+                chest_offset_lookup: null,
+                chest_offset_lookup_multi: null
             });
 
             if (answer !== false) {
@@ -671,6 +784,7 @@ function solver() {
                 return;
             }
         }
+
         console.log(false); // No answer possible
     };
 
