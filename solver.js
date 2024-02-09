@@ -727,7 +727,6 @@ function solver() {
                 });
     
                 if (answer !== false) {
-                    console.log(answer);
                     return;
                 }
             }
