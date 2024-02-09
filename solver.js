@@ -696,7 +696,7 @@ function solver() {
         ];
 
         if (chest_pos !== null && chest_pos.length === 1) {
-            const chest_offsets = offsets.map(off => add(chest_pos, off));
+            const chest_offsets = offsets.map(off => add(chest_pos[0], off));
             for (let shift of offsets) {
                 const current_offsets = chest_offsets.map(off => add(shift, off));
     
