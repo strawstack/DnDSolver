@@ -9,7 +9,7 @@ function solver() {
     const MONSTER = "M";
 
     const DOM = true;
-    const LOG = true;
+    const LOG = false;
 
     // Element refs
     const grid_ref = document.querySelectorAll(".cell");
@@ -487,16 +487,10 @@ function solver() {
     };
 
     let prevFocus = null;
+    let prevBackground = null;
 
     const nestedSol = ({ row_nums, col_nums, monster_pos_lookup, chest_pos_lookup, pos: {x: px, y: py}, wall_lookup, chest_offset_lookup }) => {
-        if (DOM) {
-            if (prevFocus !== null) getCellRef(prevFocus).style.background = "white";
-            getCellRef({x: px + 1, y: py + 1}).style.background = "lightblue";
-            prevFocus = {x: px + 1, y: py + 1};
-        };
-
-        debugger
-
+        
         // Base condition
         if (allZero(row_nums) && allZero(col_nums)) {
             if (LOG) console.log(`allZero(row_nums) && allZero(col_nums)`);
@@ -511,6 +505,14 @@ function solver() {
         if (py === 8) {
             if (LOG) console.log(`py === 8`);
             return false
+        };
+
+        if (DOM) {
+            if (prevFocus !== null) getCellRef(prevFocus).style.background = prevBackground;
+            prevFocus = {x: px + 1, y: py + 1};
+            const cellRef = getCellRef({x: px + 1, y: py + 1});
+            prevBackground = cellRef.style.background;
+            cellRef.style.background = "lightblue";
         };
 
         // If not enough rows left to satisfy column count
@@ -652,14 +654,17 @@ function solver() {
         for (let shift of offsets) {
             const current_offsets = chest_offsets.map(off => add(shift, off));
 
+            // All chest cells must be in bounds
+            if (!current_offsets.every(pos => inBounds(pos))) continue;
+
             if (DOM) {
                 if (prevOffsets !== null) {
                     for (let off of prevOffsets) {
-                        getCellRef(off).style.background = 'white';
+                        getCellRef(add(off, {x: 1, y: 1})).style.background = 'white';
                     }
                 }
                 for (let off of current_offsets) {
-                    getCellRef(off).style.background = 'lightgoldenrodyellow';
+                    getCellRef(add(off, {x: 1, y: 1})).style.background = 'lightgoldenrodyellow';
                 }
                 prevOffsets = [...current_offsets];
             }
